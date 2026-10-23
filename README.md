@@ -130,15 +130,6 @@ Then open [http://localhost:8000](http://localhost:8000). Any static file server
 
 ---
 
-## Host your own copy on GitHub Pages
-
-1. Fork this repository.
-2. Go to **Settings**, then **Pages**.
-3. Set **Source** to **Deploy from a branch**, then pick `main` and `/ (root)`.
-4. Your copy will be live at `https://<your-username>.github.io/whatthehttp/` within a couple of minutes.
-
----
-
 ## FAQ
 
 ### Is the DNS data real?
