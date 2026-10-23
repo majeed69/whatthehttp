@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!--
+    Content Security Policy: only our own files run. connect-src allows https:
+    because we talk to the DNS APIs and send one tiny timing request to the
+    site you typed. Nothing else leaves the page.
+  -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src https:; base-uri 'none'; form-action 'self'; object-src 'none'">
+  <meta name="referrer" content="no-referrer">
+  <title>WhatTheHTTP: what actually happens when you hit Enter</title>
+  <meta name="description" content="Type any website and watch, step by step, what your browser does to open it: DNS, TCP, TLS, HTTP and rendering. Real DNS data, honest explanations.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#F5F0E6" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#11131A" media="(prefers-color-scheme: dark)">
+  <meta property="og:title" content="WhatTheHTTP">
+  <meta property="og:description" content="What actually happens when you hit Enter.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231A1A1E'/%3E%3Cpath d='M7 16h9' stroke='%23D9412B' stroke-width='4'/%3E%3Cpath d='M16 16h9' stroke='%231F5FCF' stroke-width='4'/%3E%3Ccircle cx='7' cy='16' r='4' fill='%23F5F0E6'/%3E%3Ccircle cx='25' cy='16' r='4' fill='%23F5F0E6'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body class="mode-simple">
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <a class="brand" href="./" aria-label="WhatTheHTTP, start over">
+      <!-- Our own little mark: two stations joined by a two-colour line. -->
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="7" class="brand-bg"/>
+        <path d="M7 16h9" class="brand-l1"/>
+        <path d="M16 16h9" class="brand-l2"/>
+        <circle cx="7" cy="16" r="4" class="brand-dot"/>
+        <circle cx="25" cy="16" r="4" class="brand-dot"/>
+      </svg>
+      <span class="brand-name">WhatThe<b>HTTP</b></span>
+    </a>
+
+    <div class="header-tools">
+      <div class="mode-switch" role="group" aria-label="How much detail">
+        <button type="button" data-mode="simple" aria-pressed="true">Simple</button>
+        <button type="button" data-mode="engineer" aria-pressed="false">Engineer</button>
+      </div>
+      <button type="button" class="icon-btn" id="theme-toggle" aria-label="Switch to dark theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true" class="theme-icon">
+          <circle cx="12" cy="12" r="8" class="theme-ring"/>
+          <path d="M12 4a8 8 0 0 1 0 16z" class="theme-half"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- Landing: the address bar. Collapses into the trip bar once a trip starts. -->
+    <section class="hero" id="hero" aria-labelledby="hero-title">
+      <h1 id="hero-title">What actually happens<br class="br-wide"> when you hit Enter.</h1>
+      <p class="lede">Type a website. Then ride along as your request leaves the keyboard, finds a real server and comes back as a page. One stop at a time.</p>
+
+      <form class="address-form" id="address-form" novalidate>
+        <label for="site-input" class="visually-hidden">Website address</label>
+        <div class="address-bar">
+          <span class="address-lock" aria-hidden="true">
+            <svg viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>
+          </span>
+          <input id="site-input" name="site" type="text" inputmode="url" enterkeyhint="go"
+                 autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+                 placeholder="google.com" aria-describedby="input-help" maxlength="300">
+          <button type="submit" class="enter-key">Enter <span aria-hidden="true" class="enter-glyph">&#8629;</span></button>
+        </div>
+        <p id="input-help" class="input-help" aria-live="polite">Any public website works. We only need the name.</p>
+      </form>
+
+      <div class="chips">
+        <span class="chips-label" id="chips-label">Or try</span>
+        <ul class="chip-list" aria-labelledby="chips-label">
+          <li><button type="button" class="chip" data-site="google.com">google.com</button></li>
+          <li><button type="button" class="chip" data-site="wikipedia.org">wikipedia.org</button></li>
+          <li><button type="button" class="chip" data-site="github.com">github.com</button></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="journey is-idle" id="journey" aria-label="The trip">
+      <!-- Shown during a trip, replaces the big hero. -->
+      <div class="trip-bar" id="trip-bar" hidden>
+        <p class="trip-dest">
+          <span class="trip-label">Destination</span>
+          <span class="mono trip-host" id="trip-host"></span>
+        </p>
+        <button type="button" class="btn btn-ghost" id="new-trip">New trip</button>
+      </div>
+
+      <!-- The metro map. Stations are generated by app.js from one list. -->
+      <div class="map" id="map">
+        <div class="map-track" id="map-track" aria-hidden="true"></div>
+        <ol class="stations" id="stations" aria-label="Stations on the trip"></ol>
+        <div class="train" id="train" aria-hidden="true"></div>
+      </div>
+
+      <ul class="legend" aria-label="Map key">
+        <li data-line="browser"><span class="legend-swatch"></span>Browser line</li>
+        <li data-line="dns"><span class="legend-swatch"></span>DNS line</li>
+        <li data-line="conn"><span class="legend-swatch"></span>Connection line</li>
+        <li data-line="http"><span class="legend-swatch"></span>HTTP line</li>
+      </ul>
+
+      <!-- Playback controls. Sticky at the bottom on phones. -->
+      <div class="controls" id="controls" hidden>
+        <div class="controls-buttons">
+          <button type="button" class="ctrl" id="btn-prev" aria-label="Previous station" title="Previous (Left arrow)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+          </button>
+          <button type="button" class="ctrl ctrl-main" id="btn-play" aria-label="Pause" title="Play or pause (Space)">
+            <svg viewBox="0 0 24 24" aria-hidden="true" class="icon-pause"><path d="M9 6v12M15 6v12"/></svg>
+            <svg viewBox="0 0 24 24" aria-hidden="true" class="icon-play"><path d="M8 5.5v13l10.5-6.5z"/></svg>
+          </button>
+          <button type="button" class="ctrl" id="btn-next" aria-label="Next station" title="Next (Right arrow)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+          </button>
+          <button type="button" class="ctrl" id="btn-replay" aria-label="Replay from the start" title="Replay">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12a7 7 0 1 0 2.1-5"/><path d="M5 4v4h4"/></svg>
+          </button>
+          <button type="button" class="ctrl ctrl-speed" id="btn-speed" aria-label="Speed: 1x. Switch to 2x" title="Speed">1x</button>
+        </div>
+        <div class="controls-status">
+          <p class="now-next"><span class="now-label" id="now-label">Now</span> <span id="now-text"></span></p>
+          <div class="progress" aria-hidden="true"><span class="progress-bar" id="progress-bar"></span></div>
+        </div>
+      </div>
+
+      <!-- Detail panel. On phones app.js moves it inside the active station. -->
+      <section class="panel" id="panel" tabindex="-1" aria-label="Station details">
+        <div class="panel-inner" id="panel-inner"></div>
+      </section>
+    </section>
+
+    <!-- Screen reader announcements for station changes. -->
+    <p class="visually-hidden" aria-live="polite" id="announcer"></p>
+  </main>
+
+  <footer class="site-footer">
+    <p>Built by Majeed Mujawar, with a lot of coffee. No cookies, no tracking, no analytics.</p>
+    <p>DNS answers come straight to your browser from Cloudflare or Google public DNS. Keys: <kbd>Enter</kbd> start, <kbd>&larr;</kbd> <kbd>&rarr;</kbd> move, <kbd>Space</kbd> pause.</p>
+    <p><a href="https://github.com/majeed69/whatthehttp">Source on GitHub</a></p>
+  </footer>
+</body>
+</html>
